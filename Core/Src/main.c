@@ -30,7 +30,7 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-#define BUF_SIZE 128
+#define BUF_SIZE 64
 
 // Flow control
 uint8_t switch_pressed = 0;
@@ -43,7 +43,7 @@ uint16_t buffer0[BUF_SIZE];
 uint8_t buffer0_i = 0;
 uint16_t buffer1[BUF_SIZE];
 uint8_t buffer1_i  = 0;
-uint16_t* cur_buf = &buffer0;
+uint16_t* cur_buf = buffer0;
 uint8_t* cur_buf_i = &buffer0_i;
 volatile uint8_t buf_ready = 0;
 
@@ -60,6 +60,7 @@ volatile uint8_t buf_ready = 0;
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+DMA_HandleTypeDef hdma_adc1;
 
 TIM_HandleTypeDef htim7;
 
@@ -74,6 +75,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM7_Init(void);
+static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 void SystemClock_SwitchToPLL(void);
@@ -92,7 +94,7 @@ void SystemClock_SwitchToPLL(void);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-  char string_buffer[32];
+  char string_buffer[64];
   double pulse_time = 0;
   /* USER CODE END 1 */
 
@@ -121,10 +123,12 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_TIM7_Init();
+  MX_DMA_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
 //  HAL_TIM_Base_Start_IT(&htim7);
-    HAL_ADC_Start_IT(&hadc1);
+//    HAL_ADC_Start_IT(&hadc1);
+    HAL_ADC_Start_DMA(&hadc1, (uint32_t*)cur_buf, BUF_SIZE);
 //    HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_RESET);
 
   /* USER CODE END 2 */
@@ -161,9 +165,10 @@ int main(void)
             HAL_TIM_Base_Stop_IT(&htim7);
 
             if((hadc1.Instance->CR2 & ADC_CR2_ADON) != ADC_CR2_ADON) {
-                HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_RESET);
+//                HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_RESET);
 //                __HAL_ADC_ENABLE(&hadc1);
 //                HAL_ADC_Start_IT(&hadc1);
+                HAL_ADC_Start_DMA(&hadc1, cur_buf, BUF_SIZE);
             }
 
             pulse_time = ((double)tim7_overflow / 16) + ((double)__HAL_TIM_GET_COUNTER(&htim7) / 1000000);
@@ -176,7 +181,8 @@ int main(void)
                 // Begin measuring a low pulse
 //                HAL_ADC_Stop_IT(&hadc1);
 //                __HAL_ADC_DISABLE(&hadc1);
-                HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_SET);
+                HAL_ADC_Stop_DMA(&hadc1);
+//                HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_SET);
 
                 __HAL_TIM_SET_COUNTER(&htim7, 0);
                 HAL_TIM_Base_Start_IT(&htim7);
@@ -184,9 +190,13 @@ int main(void)
             }
         }
     }
+
     if (buf_ready) {
         HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_SET);
         buf_ready = 0;
+        for (uint8_t i=0; i<BUF_SIZE; ++i) {
+            cur_buf[i] = 0;
+        }
         HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_RESET);
     }
   }
@@ -261,7 +271,7 @@ static void MX_ADC1_Init(void)
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc1.Init.NbrOfConversion = 1;
-  hadc1.Init.DMAContinuousRequests = DISABLE;
+  hadc1.Init.DMAContinuousRequests = ENABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SEQ_CONV;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
   {
@@ -354,6 +364,22 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA2_Stream0_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -430,6 +456,27 @@ void SystemClock_SwitchToPLL() {
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
+    HAL_ADC_Stop_DMA(&hadc1);
+    buf_ready = 1;
+    if (cur_buf == buffer0) {
+        cur_buf = buffer1;
+    } else {
+        cur_buf = buffer0;
+    }
+    HAL_ADC_Start_DMA(&hadc1, (uint32_t*)cur_buf, BUF_SIZE);
+}
+
+void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc) {
+    // possible overrun
+    HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_SET);
+    HAL_DelayUS(100);
+    HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_RESET);
+}
+
+void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef* hadc) {
+/*
+    __HAL_ADC_DISABLE(&hadc1);
+    HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_RESET);
     if (*cur_buf_i >= BUF_SIZE) {
         (*cur_buf_i) = 0;
         buf_ready = 1;
@@ -444,7 +491,10 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
         cur_buf[*cur_buf_i] = HAL_ADC_GetValue(&hadc1);
         (*cur_buf_i)++;
     }
+    HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_SET);
+    */
 }
+
 /* USER CODE END 4 */
 
 /**
