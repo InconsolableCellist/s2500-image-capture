@@ -232,6 +232,7 @@ HAL_StatusTypeDef HAL_InitTick (uint32_t TickPriority);
 /* Peripheral Control functions  ************************************************/
 void HAL_IncTick(void);
 void HAL_Delay(uint32_t Delay);
+void HAL_DelayUS(uint32_t us);
 uint32_t HAL_GetTick(void);
 uint32_t HAL_GetTickPrio(void);
 HAL_StatusTypeDef HAL_SetTickFreq(HAL_TickFreqTypeDef Freq);

@@ -40,6 +40,7 @@ extern "C" {
 extern uint8_t switch_pressed;
 extern uint8_t tim7_overflow;
 extern uint8_t pulse_fired;
+extern uint8_t adc_int;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -60,6 +61,14 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define HW_SWITCH_Pin GPIO_PIN_0
+#define HW_SWITCH_GPIO_Port GPIOA
+#define HW_SWITCH_EXTI_IRQn EXTI0_IRQn
+#define XY_PULSE_Pin GPIO_PIN_1
+#define XY_PULSE_GPIO_Port GPIOA
+#define XY_PULSE_EXTI_IRQn EXTI1_IRQn
+#define DEBUG_PIN_Pin GPIO_PIN_4
+#define DEBUG_PIN_GPIO_Port GPIOA
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

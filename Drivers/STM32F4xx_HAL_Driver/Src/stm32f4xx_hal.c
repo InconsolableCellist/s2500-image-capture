@@ -402,6 +402,23 @@ __weak void HAL_Delay(uint32_t Delay)
   }
 }
 
+#pragma GCC push_options
+#pragma GCC optimize ("O3")
+__weak void HAL_DelayUS(uint32_t us) {
+    __IO uint32_t currentTicks = SysTick->VAL;
+    const uint32_t ticksPerMs = SysTick->LOAD + 1;
+    const uint32_t nbTicks = (((us - ((us > 0) ? 1 : 0)) * ticksPerMs) / 1000) + 90;
+    uint32_t elapsedTicks = 0;
+    __IO uint32_t oldTicks = currentTicks;
+    do {
+        currentTicks = SysTick->VAL;
+        elapsedTicks += (oldTicks < currentTicks) ? ticksPerMs + oldTicks - currentTicks :
+                        oldTicks - currentTicks;
+        oldTicks = currentTicks;
+    } while (nbTicks > elapsedTicks);
+}
+#pragma GCC pop_options
+
 /**
   * @brief Suspend Tick increment.
   * @note In the default implementation , SysTick timer is the source of time base. It is
