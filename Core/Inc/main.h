@@ -69,6 +69,10 @@ void Error_Handler(void);
 #define XY_PULSE_EXTI_IRQn EXTI1_IRQn
 #define DEBUG_PIN_Pin GPIO_PIN_4
 #define DEBUG_PIN_GPIO_Port GPIOA
+#define USB_STATUS_PIN_Pin GPIO_PIN_6
+#define USB_STATUS_PIN_GPIO_Port GPIOA
+#define ADC_STATUS_PIN_Pin GPIO_PIN_7
+#define ADC_STATUS_PIN_GPIO_Port GPIOA
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */
