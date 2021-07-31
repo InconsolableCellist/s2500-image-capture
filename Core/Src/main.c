@@ -37,7 +37,6 @@ extern USBD_HandleTypeDef hUsbDeviceFS;
 
 // Flow control
 uint8_t switch_pressed = 0;
-uint8_t tim7_overflow = 0;
 uint8_t pulse_fired = 0;
 uint8_t adc_int = 0;
 uint8_t usb_transfer_complete = 1;
@@ -52,6 +51,14 @@ volatile uint8_t buf_ready = 0;
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define USB_STATUS_HIGH HAL_GPIO_WritePin(USB_STATUS_PIN_GPIO_Port, USB_STATUS_PIN_Pin, GPIO_PIN_SET);
+#define USB_STATUS_LOW  HAL_GPIO_WritePin(USB_STATUS_PIN_GPIO_Port, USB_STATUS_PIN_Pin, GPIO_PIN_RESET);
+
+#define DEBUG_HIGH HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_SET);
+#define DEBUG_LOW  HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_RESET);
+
+#define ADC_STATUS_HIGH HAL_GPIO_WritePin(ADC_STATUS_PIN_GPIO_Port, ADC_STATUS_PIN_Pin, GPIO_PIN_SET);
+#define ADC_STATUS_LOW  HAL_GPIO_WritePin(ADC_STATUS_PIN_GPIO_Port, ADC_STATUS_PIN_Pin, GPIO_PIN_RESET);
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -68,7 +75,6 @@ TIM_HandleTypeDef htim7;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-uint8_t status;
 
 /* USER CODE END PV */
 
@@ -96,8 +102,7 @@ void SystemClock_SwitchToPLL(void);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-//  char string_buffer[64];
-  double pulse_time = 0;
+  uint8_t status;
   buffer0 = (uint16_t *)malloc(sizeof(uint16_t) * BUF_SIZE);
   buffer1 = (uint16_t *)malloc(sizeof(uint16_t) * BUF_SIZE);
   cur_buf = buffer0;
@@ -132,98 +137,55 @@ int main(void)
   MX_ADC1_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
-//  HAL_TIM_Base_Start_IT(&htim7);
-//    HAL_ADC_Start_IT(&hadc1);
-//    HAL_PCD_Start(&hpcd_USB_OTG_FS);
     HAL_ADC_Start_DMA(&hadc1, (uint32_t*)cur_buf, BUF_SIZE);
-//    HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_RESET);
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1) {
-    if (switch_pressed) {
-//        HAL_UART_Transmit(&huart2, (uint8_t*)"hello ", strlen("hello "), HAL_MAX_DELAY);
-//        sprintf(string_buffer, "%d", tim7_overflow);
-//        HAL_UART_Transmit(&huart2, string_buffer, strlen(string_buffer), HAL_MAX_DELAY);
-
-//        sprintf(string_buffer, " %d ", __HAL_TIM_GET_COUNTER(&htim7));
-//        itoa(__HAL_TIM_GET_COUNTER(&htim7), string_buffer, 10);
-//        HAL_UART_Transmit(&huart2, string_buffer, strlen(string_buffer), HAL_MAX_DELAY);
-
-        switch_pressed = 0;
-        tim7_overflow = 0;
-    }
-//    if (tim7_overflow > 16) {
-//        sprintf(string_buffer, "%d", tim7_overflow);
-//        HAL_UART_Transmit(&huart2, string_buffer, strlen(string_buffer), HAL_MAX_DELAY);
-//        HAL_UART_Transmit(&huart2, (uint8_t*)"hello ", strlen("hello "), HAL_MAX_DELAY);
-//        HAL_UART_Transmit(&huart2, (uint8_t*)" ", strlen(" "), HAL_MAX_DELAY);
-//        tim7_overflow = 0;
-//    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
     if (pulse_fired == 1) {
+        // Measures the duration of X and/or Y pulses and starts/stops data collection
         pulse_fired = 0;
         if (htim7.Instance->CR1 & TIM_CR1_CEN) {
-            // We were measuring a low pulse
+            // Stop counting and start saving data
             HAL_TIM_Base_Stop_IT(&htim7);
-
-            if((hadc1.Instance->CR2 & ADC_CR2_ADON) != ADC_CR2_ADON) {
-//                HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_RESET);
-//                __HAL_ADC_ENABLE(&hadc1);
-//                HAL_ADC_Start_IT(&hadc1);
-                HAL_ADC_Start_DMA(&hadc1, (uint32_t*)cur_buf, BUF_SIZE);
-            }
-
-//            pulse_time = ((double)tim7_overflow / 16) + ((double)__HAL_TIM_GET_COUNTER(&htim7) / 1000000);
-//            sprintf(string_buffer, "\ns: %f ", pulse_time);
-//            HAL_UART_Transmit(&huart2, string_buffer, strlen(string_buffer), HAL_MAX_DELAY);
+            HAL_ADC_Start_DMA(&hadc1, (uint32_t*)cur_buf, BUF_SIZE);
         } else {
+            // X or Y pulse happening
+
             // It's possible on startup/reset/external reset to think we're ready to measure a low pulse,
             // but the signal is high. Prevent that by checking pin state
             if (HAL_GPIO_ReadPin(XY_PULSE_GPIO_Port, XY_PULSE_Pin) == GPIO_PIN_RESET) {
-                // Begin measuring a low pulse
+                // Stop data collection and begin measuring a low pulse
                 HAL_ADC_Stop_DMA(&hadc1);
 
                 __HAL_TIM_SET_COUNTER(&htim7, 0);
                 HAL_TIM_Base_Start_IT(&htim7);
-                tim7_overflow = 0;
             }
         }
     }
 
     if (buf_ready) {
-        HAL_GPIO_WritePin(USB_STATUS_PIN_GPIO_Port, USB_STATUS_PIN_Pin, GPIO_PIN_SET);
-//        sprintf(string_buffer, "Hello, world!\r\n");
-//        CDC_Transmit_FS(string_buffer, strlen(string_buffer));
-//        USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData;
-
+        // The buffer just swapped and the old one is ready to send
         usb_transfer_complete = 0;
-        uint8_t timeout = 0;
-//        status = USBD_BUSY;
-        HAL_GPIO_WritePin(USB_STATUS_PIN_GPIO_Port, USB_STATUS_PIN_Pin, GPIO_PIN_SET);
-//        while (status != USBD_OK && timeout < 10) {
-            if (cur_buf == buffer0) {
-                status = CDC_Transmit_FS((uint8_t*)buffer1, BUF_SIZE);
-            } else {
-                status = CDC_Transmit_FS((uint8_t*)buffer0, BUF_SIZE);
-            }
-//            HAL_DelayUS(10);
-//            timeout++;
-//        }
+
+        USB_STATUS_HIGH
+        if (cur_buf == buffer0) {
+            status = CDC_Transmit_FS((uint8_t*)buffer1, BUF_SIZE);
+        } else {
+            status = CDC_Transmit_FS((uint8_t*)buffer0, BUF_SIZE);
+        }
         if (status != USBD_OK) {
             usb_transfer_complete = 1;
-            HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_SET);
-            HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_RESET);
+            DEBUG_HIGH  // signal we lost a buffer
+            DEBUG_LOW
         } else {
         }
         buf_ready = 0;
-
-//        HAL_ADC_Start_DMA(&hadc1, (uint32_t*)cur_buf, BUF_SIZE);
-        HAL_GPIO_WritePin(ADC_STATUS_PIN_GPIO_Port, ADC_STATUS_PIN_Pin, GPIO_PIN_RESET);
     }
   }
   /* USER CODE END 3 */
@@ -473,13 +435,6 @@ void SystemClock_SwitchToPLL() {
         Error_Handler();
     }
 
-/*
-    RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_SYSCLK;
-    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-    RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
-    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCL_DIV2;
-    */
     RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                                   |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
     RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
@@ -491,34 +446,35 @@ void SystemClock_SwitchToPLL() {
         Error_Handler();
     }
 
-//    HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq()/1000);
-//    HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
-//    HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
+    HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq()/1000);
+    HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
+    HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
     if (!usb_transfer_complete) {
-        HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_SET);
-        HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_RESET);
-        return;
+        DEBUG_HIGH // signal failure to transfer
+        DEBUG_LOW
     }
-    HAL_GPIO_WritePin(ADC_STATUS_PIN_GPIO_Port, ADC_STATUS_PIN_Pin, GPIO_PIN_SET);
+
     HAL_ADC_Stop_DMA(&hadc1);
-    HAL_GPIO_WritePin(ADC_STATUS_PIN_GPIO_Port, ADC_STATUS_PIN_Pin, GPIO_PIN_RESET);
     buf_ready = 1;
     if (cur_buf == buffer0) {
+        ADC_STATUS_HIGH // signal buffer swap
         cur_buf = buffer1;
     } else {
+        ADC_STATUS_LOW
         cur_buf = buffer0;
     }
+
     HAL_ADC_Start_DMA(&hadc1, (uint32_t*)cur_buf, BUF_SIZE);
 }
 
 void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc) {
     // possible overrun
-    HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_SET);
+    DEBUG_HIGH // signal error condition
     HAL_Delay(1000);
-    HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_RESET);
+    DEBUG_LOW
 }
 
 
