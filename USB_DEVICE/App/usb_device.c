@@ -87,6 +87,7 @@ void MX_USB_DEVICE_Init(void)
   }
 
   /* USER CODE BEGIN USB_DEVICE_Init_PostTreatment */
+//  ((USBD_CDC_ItfTypeDef *)hUsbDeviceFS.pUserData)->TransmitCplt = CDC_TransmitCplt_FS;
 
   /* USER CODE END USB_DEVICE_Init_PostTreatment */
 }

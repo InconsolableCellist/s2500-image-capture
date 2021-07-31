@@ -41,6 +41,7 @@ extern uint8_t switch_pressed;
 extern uint8_t tim7_overflow;
 extern uint8_t pulse_fired;
 extern uint8_t adc_int;
+extern uint8_t usb_transfer_complete;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/

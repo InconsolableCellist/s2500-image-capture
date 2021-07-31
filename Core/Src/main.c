@@ -33,13 +33,14 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 extern USBD_HandleTypeDef hUsbDeviceFS;
-#define BUF_SIZE 32768
+#define BUF_SIZE 1024
 
 // Flow control
 uint8_t switch_pressed = 0;
 uint8_t tim7_overflow = 0;
 uint8_t pulse_fired = 0;
 uint8_t adc_int = 0;
+uint8_t usb_transfer_complete = 1;
 
 // Data buffers
 uint16_t* buffer0;
@@ -67,6 +68,7 @@ TIM_HandleTypeDef htim7;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+uint8_t status;
 
 /* USER CODE END PV */
 
@@ -108,8 +110,8 @@ int main(void)
 
   /* USER CODE BEGIN Init */
   for (uint16_t i=0; i<BUF_SIZE; ++i) {
-    buffer0[i] = 0;
-    buffer1[i] = 0;
+    buffer0[i] = 0x55FF;
+    buffer1[i] = 0x22FF;
   }
 
   /* USER CODE END Init */
@@ -173,7 +175,7 @@ int main(void)
 //                HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_RESET);
 //                __HAL_ADC_ENABLE(&hadc1);
 //                HAL_ADC_Start_IT(&hadc1);
-                HAL_ADC_Start_DMA(&hadc1, cur_buf, BUF_SIZE);
+                HAL_ADC_Start_DMA(&hadc1, (uint32_t*)cur_buf, BUF_SIZE);
             }
 
 //            pulse_time = ((double)tim7_overflow / 16) + ((double)__HAL_TIM_GET_COUNTER(&htim7) / 1000000);
@@ -197,21 +199,31 @@ int main(void)
         HAL_GPIO_WritePin(USB_STATUS_PIN_GPIO_Port, USB_STATUS_PIN_Pin, GPIO_PIN_SET);
 //        sprintf(string_buffer, "Hello, world!\r\n");
 //        CDC_Transmit_FS(string_buffer, strlen(string_buffer));
-        uint8_t status;
-        USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData;
-        if (cur_buf == buffer0) {
-            status = CDC_Transmit_FS(buffer1, BUF_SIZE);
-        } else {
-            status = CDC_Transmit_FS(buffer0, BUF_SIZE);
-        }
+//        USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData;
+
+        usb_transfer_complete = 0;
+        uint8_t timeout = 0;
+//        status = USBD_BUSY;
+        HAL_GPIO_WritePin(USB_STATUS_PIN_GPIO_Port, USB_STATUS_PIN_Pin, GPIO_PIN_SET);
+//        while (status != USBD_OK && timeout < 10) {
+            if (cur_buf == buffer0) {
+                status = CDC_Transmit_FS((uint8_t*)buffer1, BUF_SIZE);
+            } else {
+                status = CDC_Transmit_FS((uint8_t*)buffer0, BUF_SIZE);
+            }
+//            HAL_DelayUS(10);
+//            timeout++;
+//        }
         if (status != USBD_OK) {
+            usb_transfer_complete = 1;
+            HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_SET);
             HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_RESET);
         } else {
-            HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_SET);
         }
         buf_ready = 0;
 
-        HAL_GPIO_WritePin(USB_STATUS_PIN_GPIO_Port, USB_STATUS_PIN_Pin, GPIO_PIN_RESET);
+//        HAL_ADC_Start_DMA(&hadc1, (uint32_t*)cur_buf, BUF_SIZE);
+        HAL_GPIO_WritePin(ADC_STATUS_PIN_GPIO_Port, ADC_STATUS_PIN_Pin, GPIO_PIN_RESET);
     }
   }
   /* USER CODE END 3 */
@@ -301,7 +313,7 @@ static void MX_ADC1_Init(void)
   */
   sConfig.Channel = ADC_CHANNEL_5;
   sConfig.Rank = 1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_15CYCLES;
+  sConfig.SamplingTime = ADC_SAMPLETIME_56CYCLES;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -485,8 +497,14 @@ void SystemClock_SwitchToPLL() {
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
+    if (!usb_transfer_complete) {
+        HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_RESET);
+        return;
+    }
     HAL_GPIO_WritePin(ADC_STATUS_PIN_GPIO_Port, ADC_STATUS_PIN_Pin, GPIO_PIN_SET);
     HAL_ADC_Stop_DMA(&hadc1);
+    HAL_GPIO_WritePin(ADC_STATUS_PIN_GPIO_Port, ADC_STATUS_PIN_Pin, GPIO_PIN_RESET);
     buf_ready = 1;
     if (cur_buf == buffer0) {
         cur_buf = buffer1;
@@ -494,13 +512,12 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
         cur_buf = buffer0;
     }
     HAL_ADC_Start_DMA(&hadc1, (uint32_t*)cur_buf, BUF_SIZE);
-    HAL_GPIO_WritePin(ADC_STATUS_PIN_GPIO_Port, ADC_STATUS_PIN_Pin, GPIO_PIN_RESET);
 }
 
 void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc) {
     // possible overrun
     HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_SET);
-    HAL_DelayUS(100);
+    HAL_Delay(1000);
     HAL_GPIO_WritePin(DEBUG_PIN_GPIO_Port, DEBUG_PIN_Pin, GPIO_PIN_RESET);
 }
 
