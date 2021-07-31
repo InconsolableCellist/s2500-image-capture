@@ -11,7 +11,7 @@ im = Image.new('1', (4096,500))
 color = ImageColor.getcolor('white', '1')
 min = 99999
 max = 0
-while byte != b"" and count<4096:
+while count<4096:
     y = math.floor(int.from_bytes(byte, "little")/1024*500)
     if (y>=500):
         y = 499
@@ -21,7 +21,7 @@ while byte != b"" and count<4096:
         min = y
     if (y > max):
         max = y
-    # byte = f.read(20)
+    byte = f.read(10)
     byte = f.read(2)
     count += 1
 

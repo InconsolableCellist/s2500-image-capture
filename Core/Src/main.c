@@ -43,7 +43,7 @@ uint8_t usb_transfer_complete = 1;
 // Data buffers
 uint16_t* buffer0;
 uint16_t* buffer1;
-volatile uint16_t* cur_buf;
+volatile uint16_t* cur_buf = NULL;
 volatile uint8_t buf_ready = 0;
 
 /* USER CODE END PTD */
@@ -172,11 +172,11 @@ int main(void)
         // The buffer just swapped and the old one is ready to send
         usb_transfer_complete = 0;
 
-        USB_STATUS_HIGH
+        USB_STATUS_HIGH // set low by transfer complete callback
         if (cur_buf == buffer0) {
-            status = CDC_Transmit_FS((uint8_t*)buffer1, BUF_SIZE);
+            status = CDC_Transmit_FS((uint8_t*)buffer1, BUF_SIZE*2);
         } else {
-            status = CDC_Transmit_FS((uint8_t*)buffer0, BUF_SIZE);
+            status = CDC_Transmit_FS((uint8_t*)buffer0, BUF_SIZE*2);
         }
         if (status != USBD_OK) {
             usb_transfer_complete = 1;
@@ -451,11 +451,11 @@ void SystemClock_SwitchToPLL() {
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
-    if (!usb_transfer_complete) {
+    if (!usb_transfer_complete || buf_ready) {
+        // buf still being ready means it wasn't transmitted
         DEBUG_HIGH // signal failure to transfer
         DEBUG_LOW
     }
-    buf_ready = 1;
     if (cur_buf == buffer0) {
         ADC_STATUS_HIGH // signal buffer swap
         cur_buf = buffer1;
@@ -463,6 +463,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
         ADC_STATUS_LOW
         cur_buf = buffer0;
     }
+    buf_ready = 1;
 
     HAL_ADC_Start_DMA(&hadc1, cur_buf, BUF_SIZE);
 }
