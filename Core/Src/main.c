@@ -23,7 +23,6 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <usbd_cdc_if.h>
@@ -44,7 +43,7 @@ uint8_t usb_transfer_complete = 1;
 // Data buffers
 uint16_t* buffer0;
 uint16_t* buffer1;
-uint16_t* cur_buf;
+volatile uint16_t* cur_buf;
 volatile uint8_t buf_ready = 0;
 
 /* USER CODE END PTD */
@@ -137,7 +136,7 @@ int main(void)
   MX_ADC1_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
-    HAL_ADC_Start_DMA(&hadc1, (uint32_t*)cur_buf, BUF_SIZE);
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)cur_buf, BUF_SIZE);
 
   /* USER CODE END 2 */
 
@@ -153,7 +152,7 @@ int main(void)
         if (htim7.Instance->CR1 & TIM_CR1_CEN) {
             // Stop counting and start saving data
             HAL_TIM_Base_Stop_IT(&htim7);
-            HAL_ADC_Start_DMA(&hadc1, (uint32_t*)cur_buf, BUF_SIZE);
+//            HAL_ADC_Start_DMA(&hadc1, cur_buf, BUF_SIZE);
         } else {
             // X or Y pulse happening
 
@@ -161,7 +160,7 @@ int main(void)
             // but the signal is high. Prevent that by checking pin state
             if (HAL_GPIO_ReadPin(XY_PULSE_GPIO_Port, XY_PULSE_Pin) == GPIO_PIN_RESET) {
                 // Stop data collection and begin measuring a low pulse
-                HAL_ADC_Stop_DMA(&hadc1);
+//                HAL_ADC_Stop_DMA(&hadc1);
 
                 __HAL_TIM_SET_COUNTER(&htim7, 0);
                 HAL_TIM_Base_Start_IT(&htim7);
@@ -265,7 +264,7 @@ static void MX_ADC1_Init(void)
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc1.Init.NbrOfConversion = 1;
-  hadc1.Init.DMAContinuousRequests = ENABLE;
+  hadc1.Init.DMAContinuousRequests = DISABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SEQ_CONV;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
   {
@@ -456,8 +455,6 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
         DEBUG_HIGH // signal failure to transfer
         DEBUG_LOW
     }
-
-    HAL_ADC_Stop_DMA(&hadc1);
     buf_ready = 1;
     if (cur_buf == buffer0) {
         ADC_STATUS_HIGH // signal buffer swap
@@ -467,7 +464,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
         cur_buf = buffer0;
     }
 
-    HAL_ADC_Start_DMA(&hadc1, (uint32_t*)cur_buf, BUF_SIZE);
+    HAL_ADC_Start_DMA(&hadc1, cur_buf, BUF_SIZE);
 }
 
 void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc) {
