@@ -33,9 +33,11 @@
 /* USER CODE BEGIN PTD */
 extern USBD_HandleTypeDef hUsbDeviceFS;
 #define BUF_SIZE 1024
+#define STATUS_BUF_SIZE 3
 
 // Flow control
 uint8_t switch_pressed = 0;
+uint8_t tim7_overflow = 0;
 uint8_t pulse_fired = 0;
 uint8_t adc_int = 0;
 uint8_t usb_transfer_complete = 1;
@@ -45,6 +47,7 @@ uint16_t* buffer0;
 uint16_t* buffer1;
 volatile uint16_t* cur_buf = NULL;
 volatile uint8_t buf_ready = 0;
+uint16_t* status_code_buffer;
 
 /* USER CODE END PTD */
 
@@ -105,6 +108,8 @@ int main(void)
   buffer0 = (uint16_t *)malloc(sizeof(uint16_t) * BUF_SIZE);
   buffer1 = (uint16_t *)malloc(sizeof(uint16_t) * BUF_SIZE);
   cur_buf = buffer0;
+
+  status_code_buffer = (uint16_t *)malloc(sizeof(uint16_t) * STATUS_BUF_SIZE);
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -152,7 +157,15 @@ int main(void)
         if (htim7.Instance->CR1 & TIM_CR1_CEN) {
             // Stop counting and start saving data
             HAL_TIM_Base_Stop_IT(&htim7);
-//            HAL_ADC_Start_DMA(&hadc1, cur_buf, BUF_SIZE);
+
+            // how to calculate duration in seconds:
+            // pulse_time = ((double)tim7_overflow / 16) + ((double)__HAL_TIM_GET_COUNTER(&htim7) / 1000000);
+            status_code_buffer[0] = 0xFEFE;
+            status_code_buffer[1] = tim7_overflow;
+            status_code_buffer[2] = __HAL_TIM_GET_COUNTER(&htim7);
+
+            CDC_Transmit_FS((uint8_t*)status_code_buffer, STATUS_BUF_SIZE*2);
+            HAL_ADC_Start_DMA(&hadc1, cur_buf, BUF_SIZE);
         } else {
             // X or Y pulse happening
 
@@ -160,9 +173,10 @@ int main(void)
             // but the signal is high. Prevent that by checking pin state
             if (HAL_GPIO_ReadPin(XY_PULSE_GPIO_Port, XY_PULSE_Pin) == GPIO_PIN_RESET) {
                 // Stop data collection and begin measuring a low pulse
-//                HAL_ADC_Stop_DMA(&hadc1);
+                HAL_ADC_Stop_DMA(&hadc1);
 
                 __HAL_TIM_SET_COUNTER(&htim7, 0);
+                tim7_overflow = 0;
                 HAL_TIM_Base_Start_IT(&htim7);
             }
         }
